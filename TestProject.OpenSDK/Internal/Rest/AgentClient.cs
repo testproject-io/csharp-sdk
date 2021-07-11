@@ -735,6 +735,11 @@ namespace TestProject.OpenSDK.Internal.Rest
             public const string REPORT_STEP = "/api/development/report/step";
 
             /// <summary>
+            /// Endpoint for reporting a batch.
+            /// </summary>
+            public const string REPORT_BATCH = "/api/development/report/batch";
+
+            /// <summary>
             /// Endpoint for execution action proxies.
             /// </summary>
             public const string EXECUTE_ACTION_PROXY = "/api/addons/executions";
