@@ -17,12 +17,19 @@
 namespace TestProject.OpenSDK.Internal.Rest.Messages
 {
     using System.Collections.Generic;
+    using Newtonsoft.Json;
 
     /// <summary>
     /// Payload object sent to the Agent to report a WebDriver command.
     /// </summary>
     public class DriverCommandReport : Report
     {
+        /// <summary>
+        /// Define type as Test for batch report support.
+        /// </summary>
+        [JsonProperty("type")]
+        private const ReportItemType Type = ReportItemType.Command;
+
         /// <summary>
         /// WebDriver command executed by the driver.
         /// </summary>
