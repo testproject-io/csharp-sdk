@@ -16,11 +16,19 @@
 
 namespace TestProject.OpenSDK.Internal.Rest.Messages
 {
+    using Newtonsoft.Json;
+
     /// <summary>
     /// Payload object sent to the Agent when reporting a test step.
     /// </summary>
     public class StepReport : Report
     {
+        /// <summary>
+        /// Define type as Test for batch report support.
+        /// </summary>
+        [JsonProperty("type")]
+        private const ReportItemType Type = ReportItemType.Step;
+
         /// <summary>
         /// A GUID that uniquely identifies this step.
         /// </summary>

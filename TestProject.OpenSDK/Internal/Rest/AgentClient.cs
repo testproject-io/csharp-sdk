@@ -57,6 +57,11 @@ namespace TestProject.OpenSDK.Internal.Rest
         private static readonly Version MinSessionReuseCapableVersion = new Version("0.64.32");
 
         /// <summary>
+        /// Minimum Agent version that supports reporting at batches.
+        /// </summary>
+        private static readonly Version MinBatchReportSupportedVersion = new Version("3.1.0");
+
+        /// <summary>
         /// The current version of the Agent in use.
         /// </summary>
         private static Version agentVersion;
@@ -256,12 +261,12 @@ namespace TestProject.OpenSDK.Internal.Rest
 
             this.serializerSettings = CustomJsonSerializer.Populate(new JsonSerializerSettings());
 
+            agentVersion = this.GetAgentVersion();
+
             // Check that Agent version supports the requested feature.
             if (compatibleVersion != null)
             {
                 Logger.Trace($"Checking if the Agent version is {compatibleVersion} at minimum");
-
-                agentVersion = this.GetAgentVersion();
 
                 if (agentVersion.CompareTo(compatibleVersion) < 0)
                 {
@@ -270,7 +275,8 @@ namespace TestProject.OpenSDK.Internal.Rest
                 }
             }
 
-            this.reportsQueue = new ReportsQueue(this.client);
+            // Create the relevant ReportsQueue according agentVersion in order to handle reports.
+            this.reportsQueue = (agentVersion.CompareTo(MinBatchReportSupportedVersion) > 0) ? new ReportsQueueBatch(this.client) : new ReportsQueue(this.client);
 
             this.StartSession(sessionReportSettings, capabilities);
 
@@ -733,6 +739,11 @@ namespace TestProject.OpenSDK.Internal.Rest
             /// Endpoint for reporting a step.
             /// </summary>
             public const string REPORT_STEP = "/api/development/report/step";
+
+            /// <summary>
+            /// Endpoint for reporting a batch.
+            /// </summary>
+            public const string REPORT_BATCH = "/api/development/report/batch";
 
             /// <summary>
             /// Endpoint for execution action proxies.
