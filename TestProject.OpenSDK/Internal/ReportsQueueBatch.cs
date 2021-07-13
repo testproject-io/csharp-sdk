@@ -42,7 +42,14 @@ namespace TestProject.OpenSDK.Internal
         /// Name of the environment variable that stores the max reports batch size.
         /// Default value of <see cref="MaxReportsBatchSize"> can be override by this environment variable.
         /// </summary>
-        private readonly string tpMaxBatchSize = "TP_MAX_BATCH_SIZE";
+        private const string TpMaxBatchSize = "TP_MAX_BATCH_SIZE";
+
+        /// <summary>
+        /// The max batch size used in reports batch creation.
+        /// In case environment variable <see cref="tpMaxBatchSize"> was defined - this will be the batch size.
+        /// Default value defined as <see cref="MaxReportsBatchSize">.
+        /// </summary>
+        private readonly int maxBatchSize;
 
         /// <summary>
         /// Logger instance for this class.
@@ -51,16 +58,9 @@ namespace TestProject.OpenSDK.Internal
 
         /// <summary>
         /// Configuration settings for (de-)serializing objects to / from JSON.
-        /// This configuration needs custom enum to string converter so it will match the agent manager expectation.
+        /// This configuration is needed because the type field we send to the agent should be Pascal case instead of camel case.
         /// </summary>
         private JsonSerializerSettings serializerSettings;
-
-        /// <summary>
-        /// The max batch size used in reports batch creation.
-        /// In case environment variable <see cref="tpMaxBatchSize"> was defined - this will be the batch size.
-        /// Default value defined as <see cref="MaxReportsBatchSize">.
-        /// </summary>
-        private int maxBatchSize;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ReportsQueueBatch"/> class.
@@ -76,14 +76,15 @@ namespace TestProject.OpenSDK.Internal
             this.serializerSettings.Converters.Add(new StringEnumConverter());
 
             // Try to get maximum report batch size from env variable.
-            this.maxBatchSize = (Environment.GetEnvironmentVariable(this.tpMaxBatchSize) != null) ? int.Parse(Environment.GetEnvironmentVariable(this.tpMaxBatchSize)) : MaxReportsBatchSize;
+            string tpMaxBatchSizeEnvVal = Environment.GetEnvironmentVariable(TpMaxBatchSize);
+            this.maxBatchSize = (tpMaxBatchSizeEnvVal != null) ? int.Parse(tpMaxBatchSizeEnvVal) : MaxReportsBatchSize;
         }
 
         /// <summary>
         ///  Overriding the base method to handle reports at batches.
         ///  While there are reports in the queue - collect up to 10 reports and send them at batch.
         /// </summary>
-        /// <exception>AgentConnectionException if cannot send report to the agent more than <see cref="MaxReportFailureAttempts"/> attempts.</exception>
+        /// <exception>FailedReportException if cannot send report to the agent more than <see cref="MaxReportFailureAttempts"/> attempts.</exception>
         protected override void HandleReport()
         {
             // LinkedList to store the reports batch before sending them.
@@ -106,32 +107,35 @@ namespace TestProject.OpenSDK.Internal
             if (batchReports.Count > 0)
             {
                 // Build REST request.
-                RestRequest sendDriverCommandRequest = new RestRequest(Endpoints.REPORT_BATCH, Method.POST);
-                sendDriverCommandRequest.RequestFormat = DataFormat.Json;
+                RestRequest sendReportsBatchRequest = new RestRequest(Endpoints.REPORT_BATCH, Method.POST);
+                sendReportsBatchRequest.RequestFormat = DataFormat.Json;
                 string json = CustomJsonSerializer.ToJson(batchReports, this.serializerSettings);
-                sendDriverCommandRequest.AddJsonBody(json);
+                sendReportsBatchRequest.AddJsonBody(json);
 
-                int reportAttemtsCount = MaxReportFailureAttempts;
                 IRestResponse response;
+                int reportAttemptsCount = MaxReportFailureAttempts;
                 do
                 {
                     // Send REST request.
-                    response = this.Client.Execute(sendDriverCommandRequest);
+                    response = this.Client.Execute(sendReportsBatchRequest);
 
-                    if ((int)response.StatusCode >= 400)
+                    if (response.IsSuccessful)
                     {
-                        Logger.Error($"Agent returned HTTP {(int)response.StatusCode} with message: {response.ErrorMessage}");
-                        reportAttemtsCount--;
-                        if (reportAttemtsCount == 0)
-                        {
-                            Logger.Error($"Failed to send reports to the agent.");
-                            throw new AgentConnectException($"Failed to send reports to the agent.");
-                        }
-
-                        Logger.Error($"Attempt to send report again to the Agent. {reportAttemtsCount} more attempts are left.");
+                        break;
                     }
+
+                    Logger.Error($"Agent returned HTTP {(int)response.StatusCode} with message: {response.ErrorMessage}");
+                    reportAttemptsCount--;
+                    Logger.Error($"Attempt to send report again to the Agent. {reportAttemptsCount} more attempts are left.");
                 }
-                while (response != null && (int)response.StatusCode >= 400);
+                while (!response.IsSuccessful && reportAttemptsCount > 0);
+
+                // In case all attepts to send the report are failed.
+                if (reportAttemptsCount == 0)
+                {
+                    Logger.Error($"All {MaxReportFailureAttempts} attempts to send report {sendReportsBatchRequest.Body.ToJson()} failed");
+                    throw new FailedReportException($"All {MaxReportFailureAttempts} attempts to send report {sendReportsBatchRequest.Body.ToJson()} failed");
+                }
 
                 // Clear all reports in the list after they were reported.
                 batchReports.Clear();
