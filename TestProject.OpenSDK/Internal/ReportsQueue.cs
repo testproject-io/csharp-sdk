@@ -138,7 +138,7 @@ namespace TestProject.OpenSDK.Internal
                 try
                 {
                     this.HandleReport();
-                } catch (AgentConnectException)
+                } catch (FailedReportException)
                 {
                     this.BrokenReports = true;
                 }
@@ -149,7 +149,7 @@ namespace TestProject.OpenSDK.Internal
         /// Submits a report to the Agent.
         /// </summary>
         /// <param name="itemToReport">The <see cref="QueueItem"/> to report to the Agent.</param>
-        /// <exception>AgentConnectionException if cannot send report to the agent more than <see cref="MaxReportFailureAttempts"/> attempts.</exception>
+        /// <exception>FailedReportException if cannot send report to the agent more than <see cref="MaxReportFailureAttempts"/> attempts.</exception>
         private void SendReport(QueueItem itemToReport)
         {
             if (itemToReport.Request == null && itemToReport.Report == null)
@@ -164,26 +164,29 @@ namespace TestProject.OpenSDK.Internal
                 return;
             }
 
-            int reportAttemtsCount = MaxReportFailureAttempts;
             IRestResponse response;
+            int reportAttemptsCount = MaxReportFailureAttempts;
             do
             {
                 response = this.Client.Execute(itemToReport.Request);
 
-                if ((int)response.StatusCode >= 400)
+                if (response.IsSuccessful)
                 {
-                    Logger.Error($"Agent returned HTTP {(int)response.StatusCode} with message: {response.ErrorMessage}");
-                    reportAttemtsCount--;
-                    if (reportAttemtsCount == 0)
-                    {
-                        Logger.Error($"Failed to send reports to the agent.");
-                        throw new AgentConnectException($"Failed to send reports to the agent.");
-                    }
-
-                    Logger.Error($"Attempt to send report again to the Agent. {reportAttemtsCount} more attempts are left.");
+                    break;
                 }
+
+                Logger.Error($"Agent returned HTTP {(int)response.StatusCode} with message: {response.ErrorMessage}");
+                reportAttemptsCount--;
+                Logger.Error($"Attempt to send report again to the Agent. {reportAttemptsCount} more attempts are left.");
             }
-            while (response != null && (int)response.StatusCode >= 400);
+            while (!response.IsSuccessful && reportAttemptsCount > 0);
+
+            // In case all attepts to send the report are failed.
+            if (reportAttemptsCount == 0)
+            {
+                Logger.Error($"All {MaxReportFailureAttempts} attempts to send report {itemToReport.Report} failed");
+                throw new FailedReportException($"All {MaxReportFailureAttempts} attempts to send report {itemToReport.Report} failed");
+            }
         }
 
         /// <summary>
