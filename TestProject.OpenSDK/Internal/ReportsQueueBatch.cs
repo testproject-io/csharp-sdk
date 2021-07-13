@@ -1,4 +1,4 @@
-﻿// <copyright file="ReportsQueue.cs" company="TestProject">
+﻿// <copyright file="ReportsQueueBatch.cs" company="TestProject">
 // Copyright 2020 TestProject (https://testproject.io)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
